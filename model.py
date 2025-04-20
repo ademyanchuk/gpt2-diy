@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import GPT2LMHeadModel
 
 @dataclass
 class GPT2Config:
@@ -109,9 +111,31 @@ class GPT2(nn.Module):
       logits = self.lm_head(x)  # -> (B,T,V)
       return logits
 
+  @classmethod
+  def from_pretrained(cls, config: GPT2Config):
+    # we only use 124m gpt-2 model for now
+    # if config differs from gpt2 (124m) model config this will crash
+    # init our model
+    model = cls(config)
+    hf_model = GPT2LMHeadModel.from_pretrained('gpt2')
+    # assert all parameter names are equal
+    mod_sd, hfmod_sd = model.state_dict(), hf_model.state_dict()
+    assert mod_sd.keys() == hfmod_sd.keys(), print('Our and HF model parameter names must be equal!')
+    with torch.no_grad():
+      # iterate keys (param names) and copy hf to ours
+      for k in mod_sd.keys():
+        # check if Conv1d weight, this one need transpose
+        if "c_" in k and k.endswith("weight"):
+          mod_sd[k].copy_(hfmod_sd[k].T)
+        else:
+          mod_sd[k].copy_(hfmod_sd[k])
+
+    return model
+          
+
 if __name__ == "__main__":
   config = GPT2Config()
-  model = GPT2(config)
+  model = GPT2.from_pretrained(config)
   model.to('cuda')
   model.eval()
   print(model)
