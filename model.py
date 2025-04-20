@@ -24,7 +24,8 @@ class Attention(nn.Module):
     # n_embd = head_size * n_heads
     self.c_attn = nn.Linear(config.n_embd, config.n_embd * 3) # explicitly (H, HS*NH*3)
     self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-    self.register_buffer('bias', torch.tril(torch.ones((config.block_size, config.block_size))))
+    # low triangle matrix for masking, don't have to be part of model's state dict
+    self.register_buffer('bias', torch.tril(torch.ones((config.block_size, config.block_size))), persistent=False)
   
   def forward(self, x):
     B,T,H = x.shape
