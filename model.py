@@ -48,7 +48,7 @@ class Attention(nn.Module):
     att = q @ k.transpose(-2, -1) # -> (B,Nh,T,T)
     att.div_(math.sqrt(Hs)) # scale by sqrt(Hs)
     # prevent communication with future tokens, -inf -> 0 after softmax
-    att.masked_fill_(self.bias == 0.0, -torch.inf)
+    att.masked_fill_(self.bias[:T, :T] == 0.0, -torch.inf)
     # convert affinities into weights
     att = F.softmax(att, dim=-1) # -> (B,Nh,T,T)
     # compute weighted sum of values
