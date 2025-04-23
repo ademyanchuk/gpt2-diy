@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import math
 
+import tiktoken
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -131,16 +132,41 @@ class GPT2(nn.Module):
           mod_sd[k].copy_(hfmod_sd[k])
 
     return model
+
+def generate(inp, model, block_size, max_new_tokens):
+  # Generate `max_new_tokens` based on the input `inp`,
+  # using provided model. Returns concatenation of
+  # inp and newly generated tokens
+  for _ in range(max_new_tokens):
+    with torch.no_grad():
+      # clamp input to block size from left
+      logits = model(inp[:,-block_size:])
+      # only need probs for the last time step
+      logits = logits[:, -1, :]
+      probs = torch.softmax(logits, -1)
+      new_id = torch.multinomial(probs, num_samples=1)
+      inp = torch.cat((inp, new_id), dim=-1)
+  return inp
           
 
 if __name__ == "__main__":
+  # set random seed
+  torch.manual_seed(42)
+  # load our model from pretrained weights
   config = GPT2Config()
   model = GPT2.from_pretrained(config)
   model.to('cuda')
   model.eval()
-  print(model)
-  x = torch.randint(config.vocab_size, size=(4, config.block_size)).type(torch.LongTensor)
-  x = x.to('cuda')
-  print(x.shape, x.dtype, x.device)
-  out = model(x)
-  print(out.shape, out.dtype, out.device)
+  # create input and tokenize it
+  text = "Hello, I'm a language model,"
+  tokenizer = tiktoken.get_encoding('gpt2')
+  ids = tokenizer.encode(text)
+  # convert to tensor, replicate and move to cuda
+  inp = torch.LongTensor(ids).unsqueeze(0).repeat(5, 1)
+  inp = inp.to('cuda')
+  # generate, decode, and print
+  out = generate(inp, model, config.block_size, 50)
+  out = tokenizer.decode_batch(out.data.tolist())
+  for res in out:
+    print(res)
+    print('------------')
