@@ -9,6 +9,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import GPT2LMHeadModel
 
+device = 'cpu' 
+if torch.cuda.is_available():
+  device = 'cuda'
+if torch.backends.mps.is_available():
+  device = 'mps' 
+print(f'using {device=}')
+
 @dataclass
 class GPT2Config:
   n_layers = 12
@@ -155,7 +162,7 @@ if __name__ == "__main__":
   # load our model from pretrained weights
   config = GPT2Config()
   model = GPT2.from_pretrained(config)
-  model.to('cuda')
+  model.to(device)
   model.eval()
   # create input and tokenize it
   text = "Hello, I'm a language model,"
@@ -163,7 +170,7 @@ if __name__ == "__main__":
   ids = tokenizer.encode(text)
   # convert to tensor, replicate and move to cuda
   inp = torch.LongTensor(ids).unsqueeze(0).repeat(5, 1)
-  inp = inp.to('cuda')
+  inp = inp.to(device)
   # generate, decode, and print
   out = generate(inp, model, config.block_size, 50)
   out = tokenizer.decode_batch(out.data.tolist())
