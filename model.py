@@ -151,7 +151,9 @@ def generate(inp, model, block_size, max_new_tokens):
       # only need probs for the last time step
       logits = logits[:, -1, :]
       probs = torch.softmax(logits, -1)
-      new_id = torch.multinomial(probs, num_samples=1)
+      topk_vals, topk_ids = torch.topk(probs, k=50) # topk_ids are indices of original tensor `probs`
+      topk_sample = torch.multinomial(topk_vals, num_samples=1) # topk_sample are indices of tensor `topk_vals`
+      new_id = torch.gather(topk_ids, -1, topk_sample) # map sampled ids to original `probs` ids
       inp = torch.cat((inp, new_id), dim=-1)
   return inp
           
