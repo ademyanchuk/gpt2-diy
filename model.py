@@ -107,7 +107,7 @@ class GPT2(nn.Module):
     })
     self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # (H, V)
 
-  def forward(self, x):
+  def forward(self, x, target=None):
     # x shape (B, T)
       B, T = x.shape
       te = self.transformer['wte'](x) # -> (B,T,H)
@@ -117,7 +117,11 @@ class GPT2(nn.Module):
          x = block(x)
       x = self.transformer['ln_f'](x)  # -> (B,T,H)
       logits = self.lm_head(x)  # -> (B,T,V)
-      return logits
+      loss = None
+      # compute loss if we have targets
+      if target is not None:
+        loss = F.cross_entropy(logits.view(B*T, -1), target.view(B*T,))
+      return logits, loss
 
   @classmethod
   def from_pretrained(cls, config: GPT2Config):
