@@ -169,9 +169,11 @@ if __name__ == "__main__":
   config = GPT2Config()
   config.block_size = 64
   model = GPT2(config)
+  model.train()
   model.to(device)
   
   batch_size = 16
+  num_steps = 50
   # initialize gpt-2 tokenizer
   tokenizer = tiktoken.get_encoding('gpt2')
   # create a batch of data
@@ -182,8 +184,16 @@ if __name__ == "__main__":
   n_tok = batch_size * config.block_size
   x, y = tokens[:n_tok].view(batch_size, config.block_size), tokens[1:n_tok+1].view(batch_size, config.block_size)
   x, y = x.to(device), y.to(device)
-
-  # do forward pass and compute loss
-  logits, loss = model(x, y)
-  print(loss.item())
+  # optimizer
+  optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+  # optimization
+  for _ in range(num_steps):
+    optimizer.zero_grad()
+    # do forward pass and compute loss
+    logits, loss = model(x, y)
+    # compute gradients
+    loss.backward()
+    # do optimization step
+    optimizer.step()
+    print(loss.item())
   
