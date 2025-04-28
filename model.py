@@ -194,25 +194,20 @@ if __name__ == "__main__":
   config = GPT2Config()
   config.block_size = 64
   model = GPT2(config)
+  # set to training mode and put on device
   model.train()
   model.to(device)
   
   batch_size = 16
   num_steps = 50
-  # initialize gpt-2 tokenizer
-  tokenizer = tiktoken.get_encoding('gpt2')
-  # create a batch of data
-  with open('input.txt', 'r', encoding='utf-8') as file:
-    text = file.read()
-  tokens = tokenizer.encode(text)
-  tokens = torch.LongTensor(tokens)
-  n_tok = batch_size * config.block_size
-  x, y = tokens[:n_tok].view(batch_size, config.block_size), tokens[1:n_tok+1].view(batch_size, config.block_size)
-  x, y = x.to(device), y.to(device)
+  # initialize dataloader
+  dataloader = DataLoaderLite()
   # optimizer
   optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
   # optimization
-  for _ in range(num_steps):
+  for i in range(num_steps):
+    x, y = dataloader.next_batch(batch_size, config.block_size)
+    x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
     # do forward pass and compute loss
     logits, loss = model(x, y)
@@ -220,5 +215,5 @@ if __name__ == "__main__":
     loss.backward()
     # do optimization step
     optimizer.step()
-    print(loss.item())
+    print(f'iter: {i} | loss: {loss.item():.4} |')
   
