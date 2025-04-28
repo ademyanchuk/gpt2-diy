@@ -160,6 +160,31 @@ def generate(inp, model, block_size, max_new_tokens):
       new_id = torch.gather(topk_ids, -1, topk_sample) # map sampled ids to original `probs` ids
       inp = torch.cat((inp, new_id), dim=-1)
   return inp
+
+class DataLoaderLite():
+  """Loads and tokenizes tiny dataset, produces batches of data"""
+  def __init__(self):
+    # initialize gpt-2 tokenizer
+    tokenizer = tiktoken.get_encoding('gpt2')
+    # create a batch of data
+    with open('input.txt', 'r', encoding='utf-8') as file:
+      text = file.read()
+    tokens = tokenizer.encode(text)
+    self.tokens = torch.LongTensor(tokens)
+    self.start = 0
+
+  def next_batch(self, batch_size, block_size):
+    """Create a batch of training examples and respective targets,
+    discard last batch, if it has < batch_size * block_size tokens"""
+    n = batch_size * block_size
+    data = self.tokens[self.start: self.start + n].view(batch_size, block_size)
+    target = self.tokens[self.start+1: self.start + n + 1].view(batch_size, block_size)
+    # move offset
+    self.start += n
+    # reset to 0, if we can't build full batch next iteration
+    if (self.start + n + 1) > len(self.tokens):
+      self.start = 0
+    return data, target
           
 
 if __name__ == "__main__":
