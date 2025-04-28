@@ -165,21 +165,25 @@ def generate(inp, model, block_size, max_new_tokens):
 if __name__ == "__main__":
   # set random seed
   torch.manual_seed(42)
-  # load our model from pretrained weights
+  # random init of model weights
   config = GPT2Config()
-  model = GPT2.from_pretrained(config)
+  config.block_size = 64
+  model = GPT2(config)
   model.to(device)
-  model.eval()
-  # create input and tokenize it
-  text = "Hello, I'm a language model,"
+  
+  batch_size = 16
+  # initialize gpt-2 tokenizer
   tokenizer = tiktoken.get_encoding('gpt2')
-  ids = tokenizer.encode(text)
-  # convert to tensor, replicate and move to cuda
-  inp = torch.LongTensor(ids).unsqueeze(0).repeat(5, 1)
-  inp = inp.to(device)
-  # generate, decode, and print
-  out = generate(inp, model, config.block_size, 50)
-  out = tokenizer.decode_batch(out.data.tolist())
-  for res in out:
-    print(res)
-    print('------------')
+  # create a batch of data
+  with open('input.txt', 'r', encoding='utf-8') as file:
+    text = file.read()
+  tokens = tokenizer.encode(text)
+  tokens = torch.LongTensor(tokens)
+  n_tok = batch_size * config.block_size
+  x, y = tokens[:n_tok].view(batch_size, config.block_size), tokens[1:n_tok+1].view(batch_size, config.block_size)
+  x, y = x.to(device), y.to(device)
+
+  # do forward pass and compute loss
+  logits, loss = model(x, y)
+  print(loss.item())
+  
