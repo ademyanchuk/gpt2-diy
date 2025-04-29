@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import math
+import time
 
 import tiktoken
 import torch
@@ -207,6 +208,8 @@ if __name__ == "__main__":
   optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
   # optimization
   for i in range(num_steps):
+    # simple timing
+    start = time.time()
     x, y = dataloader.next_batch(batch_size, config.block_size)
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
@@ -216,5 +219,10 @@ if __name__ == "__main__":
     loss.backward()
     # do optimization step
     optimizer.step()
-    print(f'iter: {i} | loss: {loss.item():.4} |')
+    # wait for cuda work to finish
+    torch.cuda.synchronize()
+    t = time.time() - start # time spent on one iteration
+    # tokens/s rounded
+    tps = num_tokens_per_step / t
+    print(f'iter: {i} | loss: {loss.item():.4f} | time: {t:.4f}s | {tps:.0f} tok/s |')
   
