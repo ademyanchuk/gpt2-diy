@@ -107,6 +107,27 @@ class GPT2(nn.Module):
       'ln_f': nn.LayerNorm(config.n_embd) # (H, H)
     })
     self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # (H, V)
+    # ensure shared weights as in paper
+    self.transformer['wte'].weight = self.lm_head.weight
+    # apply gpt-2 weight initialization
+    self.apply(self._init)
+    # scale residual layer weights by sqrt(n_layers * 2)
+    # [every sub-block feeding into residual stream]
+    scale = 1 / math.sqrt(config.n_layers * 2)
+    with torch.no_grad():
+      for block in self.transformer['h']:
+        block.attn.c_proj.weight.mul_(scale)
+        block.mlp.c_proj.weight.mul_(scale)
+
+  def _init(self, m):
+    """GPT-2 like initialization"""
+    # Note: nn.init does initialization with no_grad context by default
+    if isinstance(m, nn.Linear): # all Linear and Embedding weights
+      nn.init.normal_(m.weight, 0, 0.02)
+      if m.bias is not None:
+        nn.init.zeros_(m.bias)
+    if isinstance(m, nn.Embedding):
+      nn.init.normal_(m.weight, 0, 0.02)
 
   def forward(self, x, target=None):
     # x shape (B, T)
@@ -199,7 +220,7 @@ if __name__ == "__main__":
   model.to(device)
   
   batch_size = 16
-  num_steps = 10
+  num_steps = 20
   num_tokens_per_step = batch_size * config.block_size
   # num_steps * batch_size * block_size = tokens processed during training
   # initialize dataloader
