@@ -192,14 +192,15 @@ if __name__ == "__main__":
   torch.manual_seed(42)
   # random init of model weights
   config = GPT2Config()
-  config.block_size = 64
   model = GPT2(config)
   # set to training mode and put on device
   model.train()
   model.to(device)
   
   batch_size = 16
-  num_steps = 50
+  num_steps = 10
+  num_tokens_per_step = batch_size * config.block_size
+  # num_steps * batch_size * block_size = tokens processed during training
   # initialize dataloader
   dataloader = DataLoaderLite()
   # optimizer
