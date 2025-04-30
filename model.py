@@ -17,6 +17,8 @@ if torch.backends.mps.is_available():
   device = 'mps' 
 print(f'using {device=}')
 
+torch.set_float32_matmul_precision('high') # less bits for internal to matmul float repr
+
 @dataclass
 class GPT2Config:
   n_layers = 12
@@ -55,9 +57,10 @@ class Attention(nn.Module):
     # compute tokens compatibility (affinity)
     # (B,Nh,T,Hs) @ (B,Nh,Hs,T)
     att = q @ k.transpose(-2, -1) # -> (B,Nh,T,T)
-    att.div_(math.sqrt(Hs)) # scale by sqrt(Hs)
+    # note: inplace ops might not be auto-castable (https://pytorch.org/docs/stable/amp.html#op-eligibility)
+    att = att * (1 / math.sqrt(Hs)) # scale by sqrt(Hs)
     # prevent communication with future tokens, -inf -> 0 after softmax
-    att.masked_fill_(self.bias[:T, :T] == 0.0, -torch.inf)
+    att = torch.masked_fill(att, self.bias[:T, :T] == 0.0, -torch.inf)
     # convert affinities into weights
     att = F.softmax(att, dim=-1) # -> (B,Nh,T,T)
     # compute weighted sum of values
@@ -234,8 +237,10 @@ if __name__ == "__main__":
     x, y = dataloader.next_batch(batch_size, config.block_size)
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    # do forward pass and compute loss
-    logits, loss = model(x, y)
+    # enables autocast, TODO: check how it work on apple device
+    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+      # do forward pass and compute loss
+      logits, loss = model(x, y)
     # compute gradients
     loss.backward()
     # do optimization step
