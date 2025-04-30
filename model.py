@@ -218,6 +218,7 @@ if __name__ == "__main__":
   # random init of model weights
   config = GPT2Config()
   model = GPT2(config)
+  model.compile()
   # set to training mode and put on device
   model.train()
   model.to(device)
