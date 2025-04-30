@@ -37,8 +37,6 @@ class Attention(nn.Module):
     # n_embd = head_size * n_heads
     self.c_attn = nn.Linear(config.n_embd, config.n_embd * 3) # explicitly (H, HS*NH*3)
     self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-    # low triangle matrix for masking, don't have to be part of model's state dict
-    self.register_buffer('bias', torch.tril(torch.ones((config.block_size, config.block_size))), persistent=False)
   
   def forward(self, x):
     B,T,H = x.shape
@@ -54,18 +52,8 @@ class Attention(nn.Module):
     q = q.view((B,T,self.n_heads,Hs)).transpose(1, 2) # (B,Nh,T,Hs)
     k = k.view((B,T,self.n_heads,Hs)).transpose(1, 2) # (B,Nh,T,Hs)
     v = v.view((B,T,self.n_heads,Hs)).transpose(1, 2) # (B,Nh,T,Hs)
-    # compute tokens compatibility (affinity)
-    # (B,Nh,T,Hs) @ (B,Nh,Hs,T)
-    att = q @ k.transpose(-2, -1) # -> (B,Nh,T,T)
-    # note: inplace ops might not be auto-castable (https://pytorch.org/docs/stable/amp.html#op-eligibility)
-    att = att * (1 / math.sqrt(Hs)) # scale by sqrt(Hs)
-    # prevent communication with future tokens, -inf -> 0 after softmax
-    att = torch.masked_fill(att, self.bias[:T, :T] == 0.0, -torch.inf)
-    # convert affinities into weights
-    att = F.softmax(att, dim=-1) # -> (B,Nh,T,T)
-    # compute weighted sum of values
-    # (B,Nh,T,T) @ (B,Nh,T,Hs)
-    out = att @ v # -> (B,Nh,T,Hs)
+    # use native flash attention, see: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+    out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
     # transpose back and concat
     # (B,Nh,T,Hs) -> (B,T,Nh,Hs) -> (B,T,H)
     out = out.transpose(1, 2).reshape((B,T,H))
