@@ -206,7 +206,9 @@ if __name__ == "__main__":
   # random init of model weights
   config = GPT2Config()
   model = GPT2(config)
-  model.compile()
+  # use torch compile if on cuda (mps doesn't work for now)
+  if device == 'cuda':
+    model.compile()
   # set to training mode and put on device
   model.train()
   model.to(device)
@@ -226,7 +228,7 @@ if __name__ == "__main__":
     x, y = dataloader.next_batch(batch_size, config.block_size)
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    # enables autocast, TODO: check how it work on apple device
+    # enables autocast
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
       # do forward pass and compute loss
       logits, loss = model(x, y)
@@ -235,7 +237,8 @@ if __name__ == "__main__":
     # do optimization step
     optimizer.step()
     # wait for cuda work to finish
-    torch.cuda.synchronize()
+    if device == 'cuda':
+      torch.cuda.synchronize()
     t = time.time() - start # time spent on one iteration
     # tokens/s rounded
     tps = num_tokens_per_step / t
