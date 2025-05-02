@@ -1,4 +1,8 @@
-"""GPT-2 Implementation"""
+"""
+GPT-2 Implementation, training and evaluation.
+Inspired by Andrej Karpathy's great "Let's reproduce GPT-2"
+https://youtu.be/l8pRSuU81PU?si=9hpD5HfBAfzbNUNb
+"""
 
 from dataclasses import dataclass
 import math
@@ -10,15 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import GPT2LMHeadModel
 
-device = 'cpu' 
-if torch.cuda.is_available():
-  device = 'cuda'
-if torch.backends.mps.is_available():
-  device = 'mps' 
-print(f'using {device=}')
-
-torch.set_float32_matmul_precision('high') # less bits for internal to matmul float repr
-
+# Module Definitions
+##############################################
 @dataclass
 class GPT2Config:
   n_layers = 12
@@ -157,6 +154,11 @@ class GPT2(nn.Module):
 
     return model
 
+##############################################
+
+# Helpers:
+
+# Sample from model to generate some new tokens
 def generate(inp, model, block_size, max_new_tokens):
   # Generate `max_new_tokens` based on the input `inp`,
   # using provided model. Returns concatenation of
@@ -174,6 +176,7 @@ def generate(inp, model, block_size, max_new_tokens):
       inp = torch.cat((inp, new_id), dim=-1)
   return inp
 
+# Simple dataloader
 class DataLoaderLite():
   """Loads and tokenizes tiny dataset, produces batches of data"""
   def __init__(self):
@@ -198,14 +201,34 @@ class DataLoaderLite():
     if (self.start + n + 1) > len(self.tokens):
       self.start = 0
     return data, target
-          
 
+##################################################
+          
+# Main routine with a guard, as some parts can be importable w/o running script
+##################################################
 if __name__ == "__main__":
   # set random seed
   torch.manual_seed(42)
   # random init of model weights
   config = GPT2Config()
   model = GPT2(config)
+
+  # training related hyperparameters
+  batch_size = 16
+  num_steps = 20
+  num_tokens_per_step = batch_size * config.block_size
+  # num_steps * batch_size * block_size = tokens processed during training
+
+  # setting device
+  device = 'cpu' 
+  if torch.cuda.is_available():
+    device = 'cuda'
+  if torch.backends.mps.is_available():
+    device = 'mps' 
+  print(f'using {device=}')
+
+  torch.set_float32_matmul_precision('high') # less bits for internal to matmul float repr
+
   # use torch compile if on cuda (mps doesn't work for now)
   if device == 'cuda':
     model.compile()
@@ -213,15 +236,11 @@ if __name__ == "__main__":
   model.train()
   model.to(device)
   
-  batch_size = 16
-  num_steps = 20
-  num_tokens_per_step = batch_size * config.block_size
-  # num_steps * batch_size * block_size = tokens processed during training
   # initialize dataloader
   dataloader = DataLoaderLite()
   # optimizer
   optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
-  # optimization
+  # optimization loop
   for i in range(num_steps):
     # simple timing
     start = time.time()
