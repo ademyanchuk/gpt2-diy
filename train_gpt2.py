@@ -202,6 +202,18 @@ class DataLoaderLite():
       self.start = 0
     return data, target
 
+# Setup Optimizer
+def setup_optimizer(params):
+  # we don't want to apply weight decay to gains and biases
+  # we want opportunity to learn scale and shift and not force them towards zero
+  wd_params = [p for p in params if p.ndim == 2]
+  nowd_params = [p for p in params if p.ndim == 1]
+  optimizer = torch.optim.AdamW([{'params': wd_params, "weight_decay": 0.1}, 
+                                 {'params': nowd_params, "weight_decay": 0.0}],
+                                lr=3e-4, betas=(0.9, 0.95), eps=10e-8,
+                                fused=device=='cuda')
+  return optimizer
+
 ##################################################
           
 # Main routine with a guard, as some parts can be importable w/o running script
@@ -238,8 +250,8 @@ if __name__ == "__main__":
   
   # initialize dataloader
   dataloader = DataLoaderLite()
-  # optimizer
-  optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+  # optimizer 
+  optimizer = setup_optimizer(model.parameters())
   # optimization loop
   for i in range(num_steps):
     # simple timing
