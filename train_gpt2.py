@@ -265,6 +265,8 @@ if __name__ == "__main__":
       logits, loss = model(x, y)
     # compute gradients
     loss.backward()
+    # clip the global norm of the gradient
+    nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     # do optimization step
     optimizer.step()
     # wait for cuda work to finish
