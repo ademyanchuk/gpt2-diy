@@ -25,7 +25,7 @@ class GPT2Config:
   n_embd = 768
   n_heads = 12
   block_size = 1024
-  vocab_size = 50257
+  vocab_size = 50264 # divisible by 8
 
 class Attention(nn.Module):
   """Scaled Self Attention"""
