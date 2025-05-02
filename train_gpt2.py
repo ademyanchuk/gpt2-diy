@@ -214,6 +214,18 @@ def setup_optimizer(params):
                                 fused=device=='cuda')
   return optimizer
 
+# Simple lr cosine annealing scheme
+def get_lr(step, total_steps, max_lr):
+  """Simple impl of cosine lr decay with
+  linear warmup during first 10% of steps"""
+  warmup_steps = total_steps // 10
+  decay_steps = total_steps - warmup_steps
+  if step < warmup_steps:
+    return max_lr * (step + 1) / warmup_steps
+  else:
+    t = step - warmup_steps
+    return 0.5 * max_lr * (1 + math.cos(math.pi * (t / decay_steps)))
+
 ##################################################
           
 # Main routine with a guard, as some parts can be importable w/o running script
@@ -227,7 +239,8 @@ if __name__ == "__main__":
 
   # training related hyperparameters
   batch_size = 16
-  num_steps = 20
+  num_steps = 100
+  max_lr = 3e-4
   num_tokens_per_step = batch_size * config.block_size
   # num_steps * batch_size * block_size = tokens processed during training
 
@@ -258,7 +271,12 @@ if __name__ == "__main__":
     start = time.time()
     x, y = dataloader.next_batch(batch_size, config.block_size)
     x, y = x.to(device), y.to(device)
+
     optimizer.zero_grad()
+    # assign lr according to schedule
+    lr = get_lr(i, num_steps, max_lr)
+    for g in optimizer.param_groups:
+      g['lr'] = lr
     # enables autocast
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
       # do forward pass and compute loss
@@ -275,5 +293,5 @@ if __name__ == "__main__":
     t = time.time() - start # time spent on one iteration
     # tokens/s rounded
     tps = num_tokens_per_step / t
-    print(f'iter: {i} | loss: {loss.item():.4f} | time: {t:.4f}s | {tps:.0f} tok/s |')
+    print(f'iter: {i} | loss: {loss.item():.4f} | lr: {lr:.2E} | time: {t:.4f}s | {tps:.0f} tok/s |')
   
