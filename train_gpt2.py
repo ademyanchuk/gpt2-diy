@@ -238,11 +238,15 @@ if __name__ == "__main__":
   model = GPT2(config)
 
   # training related hyperparameters
-  batch_size = 16
-  num_steps = 100
-  max_lr = 3e-4
-  num_tokens_per_step = batch_size * config.block_size
-  # num_steps * batch_size * block_size = tokens processed during training
+  eff_batch_size = 512 # it is nice number and 512 * 1024 ~= 0.5mln tokens
+  batch_size = 4       # can fit into gpu, adjust accordingly
+  # number of steps to accumulate gradients before optimization step
+  num_accum_steps = eff_batch_size // batch_size
+  num_steps = 2048     # adjust according to the task
+  max_lr = 6e-4        # gpt-3 paper for small model
+  num_tokens_per_step = num_accum_steps * batch_size * config.block_size
+
+  print(f'Training with effective batch size: {eff_batch_size}, number of accumulation steps: {num_accum_steps}')
 
   # setting device
   device = 'cpu' 
@@ -265,18 +269,15 @@ if __name__ == "__main__":
   dataloader = DataLoaderLite()
   # optimizer 
   optimizer = setup_optimizer(model.parameters())
+  optimizer.zero_grad()
+  # accumulators for logging
+  start = time.time() # time spent per effective batch
+  l = 0.0  # loss per effective batch
   # optimization loop
   for i in range(num_steps):
-    # simple timing
-    start = time.time()
     x, y = dataloader.next_batch(batch_size, config.block_size)
     x, y = x.to(device), y.to(device)
 
-    optimizer.zero_grad()
-    # assign lr according to schedule
-    lr = get_lr(i, num_steps, max_lr)
-    for g in optimizer.param_groups:
-      g['lr'] = lr
     # enables autocast
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
       # do forward pass and compute loss
@@ -285,13 +286,25 @@ if __name__ == "__main__":
     loss.backward()
     # clip the global norm of the gradient
     nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-    # do optimization step
-    optimizer.step()
     # wait for cuda work to finish
     if device == 'cuda':
       torch.cuda.synchronize()
-    t = time.time() - start # time spent on one iteration
-    # tokens/s rounded
-    tps = num_tokens_per_step / t
-    print(f'iter: {i} | loss: {loss.item():.4f} | lr: {lr:.2E} | time: {t:.4f}s | {tps:.0f} tok/s |')
+
+    l += loss.item() / num_accum_steps # scale by number of accumulation steps as we want average loss for effective batch
+    # optimization step ones per number of accumulation steps
+    if (i + 1) % num_accum_steps == 0:
+      # assign lr according to schedule - we only use lr during optimization step (when we update weights)
+      lr = get_lr(i, num_steps, max_lr)
+      for g in optimizer.param_groups:
+        g['lr'] = lr
+      # do optimization step
+      optimizer.step()
+      optimizer.zero_grad()
+      t = time.time() - start
+      # tokens/s rounded
+      tps = num_tokens_per_step / t
+      print(f'iter: {i} | loss: {l:.4f} | lr: {lr:.2E} | time: {t:.4f}s | {tps:.0f} tok/s |')
+      # reset accumulators
+      start = time.time()
+      l = 0.0
   
